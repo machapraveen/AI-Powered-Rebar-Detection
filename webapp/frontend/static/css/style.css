@@ -1387,57 +1387,72 @@ body {
 }
 
 /* Edit Mode */
-.edit-controls {
+.results-actions {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
 }
 
-.btn-edit-toggle {
+.btn-edit-detections {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 16px;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
+    padding: 10px 18px;
+    background: rgba(245, 158, 11, 0.15);
+    border: 2px solid var(--accent);
     border-radius: var(--radius-md);
-    color: var(--text-secondary);
-    font-size: 13px;
-    font-weight: 500;
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
 }
 
-.btn-edit-toggle:hover {
-    border-color: var(--primary);
-    color: var(--text-primary);
+.btn-edit-detections:hover {
+    background: rgba(245, 158, 11, 0.25);
 }
 
-.btn-edit-toggle.active {
-    background: var(--primary);
-    border-color: var(--primary);
-    color: white;
+.btn-edit-detections.active {
+    background: var(--accent);
+    color: #000;
 }
 
-.excluded-count {
-    display: inline-block;
-    background: rgba(239, 68, 68, 0.15);
+.excluded-badge {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(239, 68, 68, 0.2);
     color: var(--danger);
-    padding: 4px 12px;
+    padding: 6px 14px;
     border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.edit-hint {
-    padding: 0 24px 12px;
     font-size: 13px;
-    color: var(--text-muted);
-    margin-top: -8px;
+    font-weight: 700;
+    border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
-.edit-hint strong {
+.edit-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: var(--radius-md);
+    padding: 14px 20px;
+    margin-bottom: 24px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    animation: fadeInUp 0.3s ease-out;
+}
+
+.edit-banner i {
+    color: var(--accent);
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.edit-banner strong {
     color: var(--danger);
+    font-weight: 700;
 }
 
 .result-image-wrapper {

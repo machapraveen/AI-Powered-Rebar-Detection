@@ -57,7 +57,8 @@ class RebarDetectorApp {
             resultImageWrapper: document.getElementById('resultImageWrapper'),
             editCanvas: document.getElementById('editCanvas'),
             editToggleBtn: document.getElementById('editToggleBtn'),
-            editHint: document.getElementById('editHint'),
+            editBtnLabel: document.getElementById('editBtnLabel'),
+            editBanner: document.getElementById('editBanner'),
             excludedCount: document.getElementById('excludedCount'),
             downloadBtn: document.getElementById('downloadBtn'),
             exportPdfBtn: document.getElementById('exportPdfBtn'),
@@ -498,7 +499,8 @@ class RebarDetectorApp {
         this.imageSize = data.image_size || null;
         this.editMode = false;
         this.elements.editToggleBtn.classList.remove('active');
-        this.elements.editHint.classList.add('hidden');
+        this.elements.editBtnLabel.textContent = 'Edit Detections';
+        this.elements.editBanner.classList.add('hidden');
         this.elements.editCanvas.classList.add('hidden');
         this.elements.excludedCount.classList.add('hidden');
 
@@ -601,11 +603,14 @@ class RebarDetectorApp {
     toggleEditMode() {
         this.editMode = !this.editMode;
         this.elements.editToggleBtn.classList.toggle('active', this.editMode);
-        this.elements.editHint.classList.toggle('hidden', !this.editMode);
+        this.elements.editBtnLabel.textContent = this.editMode ? 'Done Editing' : 'Edit Detections';
+        this.elements.editBanner.classList.toggle('hidden', !this.editMode);
         this.elements.editCanvas.classList.toggle('hidden', !this.editMode);
         if (this.editMode) {
             this.setupEditCanvas();
             this.drawEditOverlay();
+            // Scroll to the image so user can see where to click
+            this.elements.resultImageWrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }
 

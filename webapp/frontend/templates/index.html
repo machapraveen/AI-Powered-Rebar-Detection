@@ -182,11 +182,19 @@
             <section class="results-section hidden" id="resultsSection">
                 <div class="results-header">
                     <h3><i class="fas fa-chart-bar"></i> Detection Results</h3>
-                    <div class="export-buttons">
-                        <button class="btn-export btn-export-pdf" id="exportPdfBtn"><i class="fas fa-file-pdf"></i> PDF Report</button>
-                        <button class="btn-export btn-export-excel" id="exportExcelBtn"><i class="fas fa-file-excel"></i> Excel</button>
-                        <button class="btn-export btn-export-img" id="downloadBtn"><i class="fas fa-image"></i> Image</button>
+                    <div class="results-actions">
+                        <button class="btn-edit-detections" id="editToggleBtn"><i class="fas fa-pencil-alt"></i> <span id="editBtnLabel">Edit Detections</span></button>
+                        <span class="excluded-badge hidden" id="excludedCount">0 removed</span>
+                        <div class="export-buttons">
+                            <button class="btn-export btn-export-pdf" id="exportPdfBtn"><i class="fas fa-file-pdf"></i> PDF Report</button>
+                            <button class="btn-export btn-export-excel" id="exportExcelBtn"><i class="fas fa-file-excel"></i> Excel</button>
+                            <button class="btn-export btn-export-img" id="downloadBtn"><i class="fas fa-image"></i> Image</button>
+                        </div>
                     </div>
+                </div>
+                <div class="edit-banner hidden" id="editBanner">
+                    <i class="fas fa-info-circle"></i>
+                    <span>Edit mode active — click on any detected circle in the image below to mark it as <strong>not a rod</strong>. Click again to restore. All stats update automatically.</span>
                 </div>
 
                 <div class="results-grid">
@@ -239,14 +247,7 @@
 
                     <!-- Result Image -->
                     <div class="result-image-container">
-                        <div class="result-image-header">
-                            <h4><i class="fas fa-check-circle"></i> Detection Visualization</h4>
-                            <div class="edit-controls">
-                                <span class="excluded-count hidden" id="excludedCount">0 removed</span>
-                                <button class="btn-edit-toggle" id="editToggleBtn"><i class="fas fa-pencil-alt"></i> Edit</button>
-                            </div>
-                        </div>
-                        <p class="edit-hint hidden" id="editHint">Click on a circle to mark it as <strong>not a rod</strong>. Click again to restore. Stats recalculate automatically.</p>
+                        <div class="result-image-header"><h4><i class="fas fa-check-circle"></i> Detection Visualization</h4></div>
                         <div class="result-image-wrapper" id="resultImageWrapper">
                             <img id="resultImage" src="" alt="Detection Result">
                             <canvas id="editCanvas" class="hidden"></canvas>
