@@ -1,10 +1,20 @@
 # Rebar Detection Web Application - Dockerfile
 # Multi-stage build for optimized production image
+#
+# Build args:
+#   CUDA_TAG - PyTorch CUDA variant (default: cpu)
+#              Use "cu121" for CUDA 12.1, "cu118" for CUDA 11.8, etc.
+#
+# Examples:
+#   CPU:  docker build -t rebar-app .
+#   GPU:  docker build --build-arg CUDA_TAG=cu121 -t rebar-app-gpu .
 
 # ============================================================================
 # Stage 1: Builder
 # ============================================================================
 FROM python:3.10-slim as builder
+
+ARG CUDA_TAG=cpu
 
 WORKDIR /app
 
@@ -15,9 +25,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install Python dependencies (non-PyTorch)
 COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Install PyTorch with correct CUDA variant
+RUN pip install --no-cache-dir --user torch torchvision \
+    --index-url https://download.pytorch.org/whl/${CUDA_TAG}
 
 # ============================================================================
 # Stage 2: Production
@@ -47,9 +61,6 @@ COPY frontend/ ./frontend/
 
 # Create directories
 RUN mkdir -p uploads results
-
-# Copy model (if available)
-# COPY ../model/ ./model/
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1

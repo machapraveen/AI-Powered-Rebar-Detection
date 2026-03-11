@@ -6,6 +6,7 @@ Run this script to start the application locally
 
 import os
 import sys
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -34,18 +35,37 @@ def main():
         import uvicorn
         import torch
     except ImportError:
-        print("Installing dependencies...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
+        print("Dependencies missing. Running setup...")
+        setup_script = script_dir / "setup.sh"
+        if setup_script.exists():
+            subprocess.run(["bash", str(setup_script)], check=True)
+        else:
+            subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
         print()
 
     # Check GPU
     try:
         import torch
+        print(f"PyTorch version: {torch.__version__}")
         if torch.cuda.is_available():
-            print(f"GPU Available: {torch.cuda.get_device_name(0)}")
+            gpu_name = torch.cuda.get_device_name(0)
+            gpu_mem = torch.cuda.get_device_properties(0).total_mem / 1024**3
+            print(f"GPU: {gpu_name} ({gpu_mem:.1f} GB)")
         else:
             print("GPU: Not available (using CPU)")
-    except:
+            # Check if this is a misconfiguration
+            has_nvidia = shutil.which("nvidia-smi") is not None
+            if has_nvidia:
+                print("")
+                print("  WARNING: NVIDIA GPU detected but PyTorch cannot use it!")
+                print("  This means PyTorch was installed without CUDA support.")
+                print("  Detection quality will be poor on CPU.")
+                print("")
+                print("  FIX: Run 'bash setup.sh' to reinstall PyTorch with GPU support.")
+                print("")
+            else:
+                print("  Tip: For better results, use a system with NVIDIA GPU.")
+    except Exception:
         pass
 
     print()

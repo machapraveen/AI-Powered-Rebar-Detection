@@ -18,10 +18,42 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# Install dependencies if needed
-if ! python3 -c "import fastapi, uvicorn, torch" 2>/dev/null; then
-    echo "Installing dependencies..."
-    pip3 install -r requirements.txt
+# Check if PyTorch is installed (with CUDA if GPU available)
+NEEDS_SETUP=false
+
+if ! python3 -c "import torch" 2>/dev/null; then
+    NEEDS_SETUP=true
+    echo "PyTorch not found."
+elif ! python3 -c "import fastapi" 2>/dev/null; then
+    NEEDS_SETUP=true
+    echo "Dependencies missing."
+else
+    # Check if GPU exists but PyTorch is CPU-only
+    if command -v nvidia-smi &> /dev/null; then
+        HAS_CUDA=$(python3 -c "import torch; print(torch.cuda.is_available())" 2>/dev/null)
+        if [ "$HAS_CUDA" = "False" ]; then
+            TORCH_VER=$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null)
+            echo "WARNING: NVIDIA GPU detected but PyTorch ($TORCH_VER) has no CUDA support!"
+            echo "         Detection will be slow and inaccurate on CPU."
+            echo ""
+            echo "  Fix: Run 'bash setup.sh' to install GPU-enabled PyTorch"
+            echo ""
+            read -p "  Continue with CPU anyway? [y/N] " -n 1 -r
+            echo ""
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo ""
+                echo "Run: bash setup.sh"
+                exit 0
+            fi
+        fi
+    fi
+fi
+
+if [ "$NEEDS_SETUP" = true ]; then
+    echo "Running setup..."
+    echo ""
+    bash "$SCRIPT_DIR/setup.sh"
+    echo ""
 fi
 
 echo ""
