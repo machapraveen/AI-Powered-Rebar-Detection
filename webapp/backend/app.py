@@ -1,0 +1,658 @@
+"""
+Rebar Detection Web Application - Backend API (Enhanced)
+FastAPI server with:
+- Real-time rebar counting
+- Diameter/Radius estimation
+- Live camera support via WebSocket
+
+Author: AI-Powered Rebar Counter v2.0
+"""
+
+import os
+import sys
+import uuid
+import time
+import base64
+import io
+import json
+import asyncio
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, List, Dict, Any
+from collections import Counter
+
+import torch
+import torchvision
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision.models.detection import FasterRCNN_ResNet50_FPN_Weights
+from PIL import Image
+import numpy as np
+import cv2
+
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+
+# ============================================================================
+# Configuration
+# ============================================================================
+BASE_DIR = Path(__file__).resolve().parent.parent
+MODEL_DIR = BASE_DIR.parent / "model"
+UPLOAD_DIR = BASE_DIR / "uploads"
+RESULTS_DIR = BASE_DIR / "results"
+FRONTEND_DIR = BASE_DIR / "frontend"
+
+# Ensure directories exist
+UPLOAD_DIR.mkdir(exist_ok=True)
+RESULTS_DIR.mkdir(exist_ok=True)
+
+# Device configuration
+DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+# Standard rebar diameters in mm (construction industry standard)
+STANDARD_REBAR_SIZES = [6, 8, 10, 12, 14, 16, 20, 25, 28, 32, 36, 40]
+
+# Default pricing per rod (INR) - users can override via API
+DEFAULT_PRICING = {
+    6: 15, 8: 25, 10: 40, 12: 55, 14: 75, 16: 100,
+    20: 155, 25: 240, 28: 300, 32: 390, 36: 495, 40: 610
+}
+
+# Standard rebar lengths in meters (common market lengths)
+STANDARD_LENGTHS = [6, 9, 12]
+
+# ============================================================================
+# Model Loading with Diameter Estimation
+# ============================================================================
+class RebarDetector:
+    """Enhanced Rebar Detection Model with Diameter Estimation"""
+
+    def __init__(self, model_path: Optional[str] = None):
+        self.model = None
+        self.device = DEVICE
+        self.confidence_threshold = 0.65
+        self.pixels_per_mm = None  # Calibration factor
+        self.pricing = dict(DEFAULT_PRICING)  # Cost per rod by diameter (INR)
+        self.rod_length = 12.0  # Default rod length in meters
+        self._load_model(model_path)
+
+    def _load_model(self, model_path: Optional[str] = None):
+        """Load the trained Faster RCNN model"""
+        print(f"Loading model on {self.device}...")
+
+        weights = FasterRCNN_ResNet50_FPN_Weights.DEFAULT
+        self.model = torchvision.models.detection.fasterrcnn_resnet50_fpn(
+            weights=weights,
+            progress=True,
+        )
+
+        num_classes = 2
+        in_features = self.model.roi_heads.box_predictor.cls_score.in_features
+        self.model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+        self.model.roi_heads.detections_per_img = 500
+
+        if model_path is None:
+            model_files = list(MODEL_DIR.glob("model_*.pth"))
+            if model_files:
+                model_path = max(model_files, key=lambda x: int(x.stem.split('_')[1]))
+
+        if model_path and Path(model_path).exists():
+            print(f"Loading weights from: {model_path}")
+            state_dict = torch.load(model_path, map_location=self.device, weights_only=True)
+            self.model.load_state_dict(state_dict)
+
+        self.model.to(self.device)
+        self.model.eval()
+        print("Model loaded successfully!")
+
+    def estimate_diameter(self, box: List[float], image_width: int, image_height: int) -> Dict[str, Any]:
+        """
+        Estimate rebar diameter from bounding box
+
+        Uses the bounding box dimensions to estimate the diameter.
+        Returns both pixel-based and estimated mm measurements.
+        """
+        x1, y1, x2, y2 = [float(x) for x in box]
+        width_px = x2 - x1
+        height_px = y2 - y1
+
+        # For circular cross-section, diameter ≈ min(width, height)
+        # Use average for better estimation
+        diameter_px = (width_px + height_px) / 2
+        radius_px = diameter_px / 2
+
+        # Estimate diameter in mm using calibration or heuristics
+        if self.pixels_per_mm:
+            diameter_mm = diameter_px / self.pixels_per_mm
+        else:
+            # Auto-estimate based on typical rebar appearance in images
+            diameter_mm = self._match_to_standard_size(diameter_px, image_width)
+
+        return {
+            "diameter_px": float(round(diameter_px, 2)),
+            "radius_px": float(round(radius_px, 2)),
+            "diameter_mm": float(round(diameter_mm, 1)),
+            "radius_mm": float(round(diameter_mm / 2, 1)),
+            "area_mm2": float(round(3.14159 * (diameter_mm / 2) ** 2, 2)),
+            "standard_size": int(self._get_nearest_standard(diameter_mm))
+        }
+
+    def _match_to_standard_size(self, diameter_px: float, image_width: int) -> float:
+        """
+        Heuristic to estimate mm from pixels based on typical image characteristics
+        """
+        # Normalize by image width - larger images typically have smaller rebars relative to frame
+        # This is a rough estimate - calibration gives accurate results
+        relative_size = diameter_px / image_width
+
+        # Typical rebar in construction images occupies 1-5% of image width
+        # Map this to 8-32mm range (most common sizes)
+        if relative_size < 0.01:
+            return 8.0
+        elif relative_size < 0.02:
+            return 10.0
+        elif relative_size < 0.03:
+            return 12.0
+        elif relative_size < 0.04:
+            return 16.0
+        elif relative_size < 0.05:
+            return 20.0
+        elif relative_size < 0.07:
+            return 25.0
+        else:
+            return 32.0
+
+    def _get_nearest_standard(self, diameter_mm: float) -> int:
+        """Get nearest standard rebar size"""
+        return min(STANDARD_REBAR_SIZES, key=lambda x: abs(x - diameter_mm))
+
+    def calibrate(self, known_diameter_mm: float, measured_diameter_px: float):
+        """Calibrate the detector with a known reference"""
+        self.pixels_per_mm = measured_diameter_px / known_diameter_mm
+        return self.pixels_per_mm
+
+    def detect(self, image: Image.Image, estimate_size: bool = True) -> dict:
+        """
+        Detect rebars with optional diameter estimation
+        """
+        start_time = time.time()
+
+        img_width, img_height = image.size
+        img_tensor = torchvision.transforms.ToTensor()(image)
+
+        with torch.no_grad():
+            results = self.model([img_tensor.to(self.device)])
+
+        boxes = results[0]["boxes"].cpu().numpy()
+        scores = results[0]["scores"].cpu().numpy()
+
+        mask = scores > self.confidence_threshold
+        filtered_boxes = boxes[mask]
+        filtered_scores = scores[mask]
+
+        # Calculate diameter for each detection
+        detections = []
+        diameter_counts = Counter()
+        total_area = 0.0
+
+        for i, (box, score) in enumerate(zip(filtered_boxes, filtered_scores)):
+            box_list = [float(x) for x in box]
+            detection = {
+                "id": i + 1,
+                "box": box_list,
+                "confidence": round(float(score), 3),
+                "center": [
+                    round((box_list[0] + box_list[2]) / 2, 1),
+                    round((box_list[1] + box_list[3]) / 2, 1)
+                ]
+            }
+
+            if estimate_size:
+                size_info = self.estimate_diameter(box.tolist(), img_width, img_height)
+                detection.update(size_info)
+                diameter_counts[size_info["standard_size"]] += 1
+                total_area += size_info["area_mm2"]
+
+            detections.append(detection)
+
+        inference_time = time.time() - start_time
+
+        # Summary statistics
+        summary = {
+            "total_count": len(detections),
+            "inference_time": round(inference_time, 3),
+            "confidence_threshold": self.confidence_threshold,
+            "image_size": {"width": img_width, "height": img_height}
+        }
+
+        if estimate_size and detections:
+            diameters = [d["diameter_mm"] for d in detections]
+
+            # Calculate cost breakdown by size
+            cost_breakdown = {}
+            total_cost = 0.0
+            for size, count in diameter_counts.items():
+                unit_price = self.pricing.get(size, 0)
+                size_cost = unit_price * count
+                total_cost += size_cost
+                cost_breakdown[str(size)] = {
+                    "count": count,
+                    "unit_price": unit_price,
+                    "subtotal": size_cost
+                }
+
+            summary["size_stats"] = {
+                "min_diameter_mm": round(min(diameters), 1),
+                "max_diameter_mm": round(max(diameters), 1),
+                "avg_diameter_mm": round(sum(diameters) / len(diameters), 1),
+                "total_cross_section_area_mm2": round(total_area, 2),
+                "size_distribution": dict(diameter_counts.most_common())
+            }
+
+            summary["cost_estimate"] = {
+                "total_cost": round(total_cost, 2),
+                "rod_length_m": self.rod_length,
+                "cost_breakdown": cost_breakdown,
+                "pricing_used": {str(k): v for k, v in self.pricing.items()}
+            }
+
+            # Add per-detection cost
+            for det in detections:
+                std_size = det.get("standard_size", 12)
+                det["unit_price"] = self.pricing.get(std_size, 0)
+
+        return {
+            "summary": summary,
+            "detections": detections
+        }
+
+    def detect_and_visualize(self, image: Image.Image, output_path: str, show_sizes: bool = True) -> dict:
+        """
+        Detect rebars and save visualization with diameter info
+        """
+        results = self.detect(image, estimate_size=show_sizes)
+        img_array = np.array(image.copy())
+
+        # Color coding by size
+        size_colors = {
+            6: (255, 200, 200), 8: (255, 150, 150), 10: (255, 100, 100),
+            12: (255, 50, 50), 16: (200, 50, 50), 20: (150, 50, 50),
+            25: (100, 50, 100), 32: (50, 50, 150), 36: (50, 100, 150),
+            40: (50, 150, 200)
+        }
+
+        for det in results["detections"]:
+            box = det["box"]
+            x1, y1, x2, y2 = [int(c) for c in box]
+            center_x, center_y = int(det["center"][0]), int(det["center"][1])
+
+            # Get color based on size
+            std_size = det.get("standard_size", 12)
+            color = size_colors.get(std_size, (255, 50, 50))
+
+            # Calculate radius for visualization
+            radius = max(int((x2 - x1 + y2 - y1) / 4 * 0.6), 5)
+
+            # Draw filled circle with border
+            cv2.circle(img_array, (center_x, center_y), radius, color, -1)
+            cv2.circle(img_array, (center_x, center_y), radius, (255, 255, 255), 2)
+
+            # Draw diameter text for larger detections
+            if show_sizes and radius > 10:
+                size_text = f"{det.get('diameter_mm', '?')}mm"
+                font_scale = 0.4
+                cv2.putText(img_array, size_text, (center_x - 15, center_y + radius + 15),
+                           cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), 1)
+
+        # Draw summary panel
+        self._draw_summary_panel(img_array, results)
+
+        # Save result
+        result_image = Image.fromarray(img_array)
+        result_image.save(output_path, quality=95)
+
+        results["output_path"] = output_path
+        return results
+
+    def _draw_summary_panel(self, img_array: np.ndarray, results: dict):
+        """Draw a summary panel on the image"""
+        h, w = img_array.shape[:2]
+        panel_height = 120
+        panel_width = min(400, w - 20)
+
+        # Create semi-transparent panel
+        overlay = img_array.copy()
+        cv2.rectangle(overlay, (10, 10), (panel_width, panel_height), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.7, img_array, 0.3, 0, img_array)
+
+        # Draw border
+        cv2.rectangle(img_array, (10, 10), (panel_width, panel_height), (0, 255, 0), 2)
+
+        # Text settings
+        font = cv2.FONT_HERSHEY_SIMPLEX
+
+        # Line 1: Count
+        count = results["summary"]["total_count"]
+        cv2.putText(img_array, f"Rebar Count: {count}", (20, 40),
+                   font, 0.8, (0, 255, 0), 2)
+
+        # Line 2: Time
+        time_ms = results["summary"]["inference_time"]
+        cv2.putText(img_array, f"Time: {time_ms}s", (20, 65),
+                   font, 0.5, (255, 255, 255), 1)
+
+        # Line 3: Size info
+        if "size_stats" in results["summary"]:
+            stats = results["summary"]["size_stats"]
+            cv2.putText(img_array,
+                       f"Avg: {stats['avg_diameter_mm']}mm | Range: {stats['min_diameter_mm']}-{stats['max_diameter_mm']}mm",
+                       (20, 90), font, 0.45, (200, 200, 255), 1)
+            cv2.putText(img_array,
+                       f"Total Area: {stats['total_cross_section_area_mm2']} mm2",
+                       (20, 110), font, 0.45, (200, 255, 200), 1)
+
+
+# ============================================================================
+# FastAPI Application
+# ============================================================================
+app = FastAPI(
+    title="Rebar Detection API v2.0",
+    description="AI-powered rebar counting with diameter estimation and live camera support",
+    version="2.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
+app.mount("/results", StaticFiles(directory=RESULTS_DIR), name="results")
+
+templates = Jinja2Templates(directory=FRONTEND_DIR / "templates")
+
+detector: Optional[RebarDetector] = None
+
+def get_detector() -> RebarDetector:
+    global detector
+    if detector is None:
+        detector = RebarDetector()
+    return detector
+
+
+# ============================================================================
+# WebSocket Manager for Live Camera
+# ============================================================================
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def send_json(self, websocket: WebSocket, data: dict):
+        await websocket.send_json(data)
+
+manager = ConnectionManager()
+
+
+# ============================================================================
+# API Endpoints
+# ============================================================================
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "device": str(DEVICE),
+        "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU"
+    })
+
+
+@app.get("/api/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "version": "2.0.0",
+        "device": str(DEVICE),
+        "gpu_available": torch.cuda.is_available(),
+        "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        "model_loaded": detector is not None,
+        "features": ["counting", "diameter_estimation", "live_camera"]
+    }
+
+
+@app.post("/api/detect")
+async def detect_rebars(file: UploadFile = File(...), estimate_size: bool = True):
+    """
+    Detect rebars with diameter estimation
+    """
+    allowed_types = ["image/jpeg", "image/png", "image/jpg", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail=f"Invalid file type")
+
+    try:
+        file_id = str(uuid.uuid4())[:8]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        contents = await file.read()
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+
+        model = get_detector()
+        result_filename = f"result_{timestamp}_{file_id}.jpg"
+        result_path = RESULTS_DIR / result_filename
+
+        results = model.detect_and_visualize(image, str(result_path), show_sizes=estimate_size)
+
+        return {
+            "success": True,
+            "data": {
+                "rebar_count": results["summary"]["total_count"],
+                "inference_time": results["summary"]["inference_time"],
+                "confidence_threshold": results["summary"]["confidence_threshold"],
+                "result_image": f"/results/{result_filename}",
+                "image_size": results["summary"]["image_size"],
+                "size_stats": results["summary"].get("size_stats"),
+                "cost_estimate": results["summary"].get("cost_estimate"),
+                "detections": results["detections"]
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/detect/frame")
+async def detect_frame(request: Request):
+    """
+    Detect rebars from base64 encoded frame (for live camera)
+    """
+    try:
+        data = await request.json()
+        image_data = data.get("image")
+
+        if not image_data:
+            raise HTTPException(status_code=400, detail="No image data provided")
+
+        # Decode base64 image
+        if "," in image_data:
+            image_data = image_data.split(",")[1]
+
+        image_bytes = base64.b64decode(image_data)
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+        model = get_detector()
+        results = model.detect(image, estimate_size=True)
+
+        return {
+            "success": True,
+            "data": results
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.websocket("/ws/live")
+async def websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time camera detection
+    """
+    await manager.connect(websocket)
+    model = get_detector()
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+
+            if data.get("type") == "frame":
+                image_data = data.get("image", "")
+
+                if "," in image_data:
+                    image_data = image_data.split(",")[1]
+
+                try:
+                    image_bytes = base64.b64decode(image_data)
+                    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+                    results = model.detect(image, estimate_size=True)
+
+                    await manager.send_json(websocket, {
+                        "type": "detection",
+                        "data": results
+                    })
+                except Exception as e:
+                    await manager.send_json(websocket, {
+                        "type": "error",
+                        "message": str(e)
+                    })
+
+            elif data.get("type") == "calibrate":
+                known_size = data.get("known_diameter_mm", 12)
+                measured_px = data.get("measured_diameter_px", 50)
+                ppm = model.calibrate(known_size, measured_px)
+
+                await manager.send_json(websocket, {
+                    "type": "calibration",
+                    "pixels_per_mm": ppm
+                })
+
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+
+@app.post("/api/calibrate")
+async def calibrate_detector(known_diameter_mm: float = 12.0, measured_diameter_px: float = 50.0):
+    """
+    Calibrate the detector for accurate size measurements
+    """
+    model = get_detector()
+    ppm = model.calibrate(known_diameter_mm, measured_diameter_px)
+
+    return {
+        "success": True,
+        "pixels_per_mm": ppm,
+        "message": f"Calibrated: {ppm:.2f} pixels per mm"
+    }
+
+
+@app.get("/api/stats")
+async def get_stats():
+    result_files = list(RESULTS_DIR.glob("*.jpg"))
+
+    gpu_memory = None
+    if torch.cuda.is_available():
+        gpu_memory = {
+            "allocated": round(torch.cuda.memory_allocated() / 1024**2, 2),
+            "cached": round(torch.cuda.memory_reserved() / 1024**2, 2),
+            "total": round(torch.cuda.get_device_properties(0).total_memory / 1024**2, 2)
+        }
+
+    return {
+        "total_detections": len(result_files),
+        "device": str(DEVICE),
+        "gpu_memory_mb": gpu_memory,
+        "model_loaded": detector is not None,
+        "standard_rebar_sizes": STANDARD_REBAR_SIZES
+    }
+
+
+@app.delete("/api/clear")
+async def clear_results():
+    count = 0
+    for f in RESULTS_DIR.glob("*.jpg"):
+        f.unlink()
+        count += 1
+    return {"cleared": count}
+
+
+@app.get("/api/pricing")
+async def get_pricing():
+    """Get current pricing configuration"""
+    model = get_detector()
+    return {
+        "pricing": {str(k): v for k, v in model.pricing.items()},
+        "rod_length_m": model.rod_length,
+        "standard_sizes": STANDARD_REBAR_SIZES,
+        "standard_lengths": STANDARD_LENGTHS
+    }
+
+
+@app.post("/api/pricing")
+async def update_pricing(request: Request):
+    """
+    Update pricing for rod sizes.
+    Body: { "pricing": {"6": 15, "8": 25, ...}, "rod_length_m": 12 }
+    """
+    model = get_detector()
+    data = await request.json()
+
+    if "pricing" in data:
+        for size_str, price in data["pricing"].items():
+            size = int(size_str)
+            if size in STANDARD_REBAR_SIZES and isinstance(price, (int, float)) and price >= 0:
+                model.pricing[size] = float(price)
+
+    if "rod_length_m" in data:
+        length = float(data["rod_length_m"])
+        if length > 0:
+            model.rod_length = length
+
+    return {
+        "success": True,
+        "pricing": {str(k): v for k, v in model.pricing.items()},
+        "rod_length_m": model.rod_length
+    }
+
+
+# ============================================================================
+# Main Entry Point
+# ============================================================================
+if __name__ == "__main__":
+    print("=" * 60)
+    print("REBAR DETECTION WEB APPLICATION v2.0")
+    print("Features: Counting, Diameter Estimation, Live Camera")
+    print("=" * 60)
+    print(f"Device: {DEVICE}")
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+    print("=" * 60)
+
+    get_detector()
+
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="info"
+    )

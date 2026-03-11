@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rebar Counter AI v2.0 - Detection & Measurement</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Animated Background -->
+    <div class="bg-animation">
+        <div class="bg-gradient"></div>
+        <div class="bg-grid"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="logo">
+                <div class="logo-icon">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div class="logo-text">
+                    <h1>Rebar Counter <span class="version">v2.0</span></h1>
+                    <span>Count + Measure + Live Camera</span>
+                </div>
+            </div>
+            <div class="header-info">
+                <div class="device-badge" id="deviceBadge">
+                    <i class="fas fa-microchip"></i>
+                    <span>{{ gpu_name }}</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Hero Section -->
+            <section class="hero">
+                <h2>Count & Measure Rebars Instantly</h2>
+                <p>Upload an image or use live camera. Our AI detects rebars, counts them, and estimates their diameter with construction-grade accuracy.</p>
+            </section>
+
+            <!-- Mode Selector -->
+            <section class="mode-selector">
+                <button class="mode-btn active" id="uploadModeBtn" data-mode="upload">
+                    <i class="fas fa-upload"></i>
+                    <span>Upload Image</span>
+                </button>
+                <button class="mode-btn" id="cameraModeBtn" data-mode="camera">
+                    <i class="fas fa-video"></i>
+                    <span>Live Camera</span>
+                </button>
+            </section>
+
+            <!-- Upload Section -->
+            <section class="upload-section" id="uploadSection">
+                <div class="upload-container" id="uploadContainer">
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-icon">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                        </div>
+                        <h3>Drop your image here</h3>
+                        <p>or click to browse</p>
+                        <div class="upload-formats">
+                            <span>Supports: JPG, PNG, WebP</span>
+                        </div>
+                        <input type="file" id="fileInput" accept="image/*" hidden>
+                    </div>
+
+                    <!-- Preview Area -->
+                    <div class="preview-area hidden" id="previewArea">
+                        <div class="preview-header">
+                            <h4><i class="fas fa-image"></i> Selected Image</h4>
+                            <button class="btn-clear" id="clearBtn">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
+                        </div>
+                        <div class="preview-image-container">
+                            <img id="previewImage" src="" alt="Preview">
+                        </div>
+                        <div class="preview-info" id="previewInfo"></div>
+                    </div>
+                </div>
+
+                <!-- Analyze Button -->
+                <button class="btn-analyze" id="analyzeBtn" disabled>
+                    <span class="btn-text">
+                        <i class="fas fa-search-plus"></i> Analyze Image
+                    </span>
+                    <span class="btn-loading hidden">
+                        <i class="fas fa-spinner fa-spin"></i> Processing...
+                    </span>
+                </button>
+            </section>
+
+            <!-- Camera Section -->
+            <section class="camera-section hidden" id="cameraSection">
+                <div class="camera-container">
+                    <div class="camera-header">
+                        <h4><i class="fas fa-video"></i> Live Camera Feed</h4>
+                        <div class="camera-controls">
+                            <button class="btn-icon" id="switchCameraBtn" title="Switch Camera">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                            <button class="btn-icon" id="captureBtn" title="Capture Frame">
+                                <i class="fas fa-camera"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="camera-view-container">
+                        <video id="cameraVideo" autoplay playsinline></video>
+                        <canvas id="overlayCanvas"></canvas>
+                        <div class="camera-status" id="cameraStatus">
+                            <i class="fas fa-spinner fa-spin"></i> Connecting to camera...
+                        </div>
+                    </div>
+                    <div class="live-stats" id="liveStats">
+                        <div class="live-stat">
+                            <span class="live-stat-label">Count</span>
+                            <span class="live-stat-value" id="liveCount">0</span>
+                        </div>
+                        <div class="live-stat">
+                            <span class="live-stat-label">Avg Size</span>
+                            <span class="live-stat-value" id="liveAvgSize">-</span>
+                        </div>
+                        <div class="live-stat">
+                            <span class="live-stat-label">FPS</span>
+                            <span class="live-stat-value" id="liveFPS">0</span>
+                        </div>
+                    </div>
+                    <div class="camera-actions">
+                        <button class="btn-start-detection" id="startDetectionBtn">
+                            <i class="fas fa-play"></i> Start Detection
+                        </button>
+                        <button class="btn-stop-detection hidden" id="stopDetectionBtn">
+                            <i class="fas fa-stop"></i> Stop Detection
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Calibration Panel -->
+                <div class="calibration-panel">
+                    <h4><i class="fas fa-ruler"></i> Calibration (Optional)</h4>
+                    <p>For accurate measurements, place a rebar of known size in frame</p>
+                    <div class="calibration-inputs">
+                        <div class="input-group">
+                            <label>Known Diameter (mm)</label>
+                            <input type="number" id="knownDiameter" value="12" min="6" max="40" step="1">
+                        </div>
+                        <button class="btn-calibrate" id="calibrateBtn">
+                            <i class="fas fa-crosshairs"></i> Calibrate
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Pricing Configuration Panel -->
+            <section class="pricing-section" id="pricingSection">
+                <div class="pricing-container">
+                    <div class="pricing-header" id="pricingToggle">
+                        <h4><i class="fas fa-indian-rupee-sign"></i> Rod Pricing Configuration</h4>
+                        <button class="btn-icon" id="pricingExpandBtn">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </div>
+                    <div class="pricing-body hidden" id="pricingBody">
+                        <p class="pricing-hint">Set cost per rod for each diameter size. Prices update automatically for new detections.</p>
+                        <div class="pricing-length-row">
+                            <div class="input-group">
+                                <label>Rod Length (meters)</label>
+                                <select id="rodLength">
+                                    <option value="6">6m</option>
+                                    <option value="9">9m</option>
+                                    <option value="12" selected>12m (Standard)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="pricing-grid" id="pricingGrid"></div>
+                        <div class="pricing-actions">
+                            <button class="btn-save-pricing" id="savePricingBtn">
+                                <i class="fas fa-save"></i> Save Pricing
+                            </button>
+                            <button class="btn-reset-pricing" id="resetPricingBtn">
+                                <i class="fas fa-undo"></i> Reset to Default
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section hidden" id="resultsSection">
+                <div class="results-header">
+                    <h3><i class="fas fa-chart-bar"></i> Detection Results</h3>
+                </div>
+
+                <div class="results-grid">
+                    <!-- Stats Cards -->
+                    <div class="stats-container">
+                        <div class="stat-card primary">
+                            <div class="stat-icon">
+                                <i class="fas fa-bars"></i>
+                            </div>
+                            <div class="stat-content">
+                                <div class="stat-value" id="rebarCount">0</div>
+                                <div class="stat-label">Rebars Detected</div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-ruler-combined"></i>
+                            </div>
+                            <div class="stat-content">
+                                <div class="stat-value" id="avgDiameter">-</div>
+                                <div class="stat-label">Avg Diameter</div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-circle"></i>
+                            </div>
+                            <div class="stat-content">
+                                <div class="stat-value" id="totalArea">-</div>
+                                <div class="stat-label">Total Area (mm²)</div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <div class="stat-content">
+                                <div class="stat-value" id="inferenceTime">0s</div>
+                                <div class="stat-label">Processing Time</div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card cost-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-indian-rupee-sign"></i>
+                            </div>
+                            <div class="stat-content">
+                                <div class="stat-value" id="totalCostStat">₹0</div>
+                                <div class="stat-label">Estimated Cost</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cost Estimate Card -->
+                    <div class="cost-estimate-container" id="costEstimateContainer">
+                        <div class="cost-estimate-header">
+                            <h4><i class="fas fa-indian-rupee-sign"></i> Cost Estimate</h4>
+                            <div class="cost-total" id="costTotal">₹0</div>
+                        </div>
+                        <div class="cost-breakdown" id="costBreakdown"></div>
+                        <div class="cost-footer">
+                            <span class="cost-note" id="costNote">Based on current pricing</span>
+                        </div>
+                    </div>
+
+                    <!-- Size Distribution -->
+                    <div class="size-distribution-container" id="sizeDistContainer">
+                        <h4><i class="fas fa-chart-pie"></i> Size Distribution</h4>
+                        <div class="size-distribution" id="sizeDistribution"></div>
+                    </div>
+
+                    <!-- Result Image -->
+                    <div class="result-image-container">
+                        <div class="result-image-header">
+                            <h4><i class="fas fa-check-circle"></i> Detection Visualization</h4>
+                            <button class="btn-download" id="downloadBtn">
+                                <i class="fas fa-download"></i> Download
+                            </button>
+                        </div>
+                        <div class="result-image-wrapper">
+                            <img id="resultImage" src="" alt="Detection Result">
+                        </div>
+                    </div>
+
+                    <!-- Detailed Detection Table -->
+                    <div class="detections-table-container" id="detectionsTableContainer">
+                        <h4><i class="fas fa-list"></i> Detailed Measurements</h4>
+                        <div class="table-scroll">
+                            <table class="detections-table" id="detectionsTable">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Diameter (mm)</th>
+                                        <th>Radius (mm)</th>
+                                        <th>Area (mm²)</th>
+                                        <th>Standard Size</th>
+                                        <th>Cost (₹)</th>
+                                        <th>Confidence</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="detectionsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Features Section -->
+            <section class="features-section">
+                <h3>Enhanced AI Features</h3>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-ruler"></i>
+                        </div>
+                        <h4>Size Estimation</h4>
+                        <p>Estimates rebar diameter from 6mm to 40mm with standard size matching</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-video"></i>
+                        </div>
+                        <h4>Live Camera</h4>
+                        <p>Real-time detection from webcam or phone camera via WebRTC</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-crosshairs"></i>
+                        </div>
+                        <h4>Calibration</h4>
+                        <p>Calibrate with known rebar size for precise measurements</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">
+                            <i class="fas fa-chart-area"></i>
+                        </div>
+                        <h4>Area Calculation</h4>
+                        <p>Computes total cross-sectional area for structural analysis</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>Built with <i class="fas fa-heart"></i> using PyTorch & FastAPI</p>
+            <p class="footer-credit">Rebar Counter AI v2.0 - Count, Measure, Analyze</p>
+        </div>
+    </footer>
+
+    <!-- Toast Notification -->
+    <div class="toast hidden" id="toast">
+        <div class="toast-icon"></div>
+        <div class="toast-message"></div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

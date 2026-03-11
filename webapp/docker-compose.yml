@@ -1,0 +1,63 @@
+# Rebar Detection Web Application - Docker Compose Configuration
+
+version: '3.8'
+
+services:
+  rebar-detector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rebar-detector-app
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount model directory
+      - ../model:/app/model:ro
+      # Persist results
+      - ./results:/app/results
+      # Persist uploads (temporary)
+      - ./uploads:/app/uploads
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=all
+    restart: unless-stopped
+    # GPU support (uncomment if using NVIDIA GPU)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# Optional: GPU-enabled service
+  rebar-detector-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rebar-detector-gpu
+    ports:
+      - "8001:8000"
+    volumes:
+      - ../model:/app/model:ro
+      - ./results:/app/results
+      - ./uploads:/app/uploads
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=all
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - gpu

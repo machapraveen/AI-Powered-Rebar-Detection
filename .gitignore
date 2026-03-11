@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# App directories (runtime generated)
+webapp/uploads/
+webapp/results/
+
+# Large files (>100MB, exceed GitHub limit)
+model/*.pth
+
+# Datasets (too large for git, ~684MB)
+rebar_count_datasets/
+
+# Inference results (generated)
+inference_results/
+
+# Logs
+*.log
