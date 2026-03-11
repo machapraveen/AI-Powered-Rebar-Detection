@@ -1,0 +1,38 @@
+{
+  "name": "Rebar Counter AI",
+  "short_name": "RebarAI",
+  "description": "AI-Powered Steel Rebar Detection, Counting, Measurement & Cost Estimation",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a1a",
+  "theme_color": "#667eea",
+  "orientation": "any",
+  "categories": ["utilities", "productivity"],
+  "icons": [
+    {
+      "src": "/static/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Upload Image",
+      "url": "/?mode=upload",
+      "description": "Upload a rebar image for detection"
+    },
+    {
+      "name": "Live Camera",
+      "url": "/?mode=camera",
+      "description": "Start live camera detection"
+    }
+  ]
+}

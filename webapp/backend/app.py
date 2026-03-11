@@ -379,6 +379,17 @@ app.mount("/results", StaticFiles(directory=RESULTS_DIR), name="results")
 
 templates = Jinja2Templates(directory=FRONTEND_DIR / "templates")
 
+
+# PWA: Serve service worker from root scope
+@app.get("/sw.js")
+async def service_worker():
+    sw_path = FRONTEND_DIR / "static" / "sw.js"
+    return FileResponse(
+        sw_path,
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/"}
+    )
+
 detector: Optional[RebarDetector] = None
 
 def get_detector() -> RebarDetector:
