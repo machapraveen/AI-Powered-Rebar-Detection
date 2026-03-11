@@ -54,6 +54,11 @@ class RebarDetectorApp {
             costBreakdownFoot: document.getElementById('costBreakdownFoot'),
             costNote: document.getElementById('costNote'),
             resultImage: document.getElementById('resultImage'),
+            resultImageWrapper: document.getElementById('resultImageWrapper'),
+            editCanvas: document.getElementById('editCanvas'),
+            editToggleBtn: document.getElementById('editToggleBtn'),
+            editHint: document.getElementById('editHint'),
+            excludedCount: document.getElementById('excludedCount'),
             downloadBtn: document.getElementById('downloadBtn'),
             exportPdfBtn: document.getElementById('exportPdfBtn'),
             exportExcelBtn: document.getElementById('exportExcelBtn'),
@@ -64,6 +69,10 @@ class RebarDetectorApp {
         this.currentFile = null;
         this.resultImageUrl = null;
         this.lastResultData = null;
+        this.editMode = false;
+        this.detections = [];
+        this.excludedIds = new Set();
+        this.imageSize = null;
         this.currentMode = 'upload';
         this.cameraStream = null;
         this.facingMode = 'environment';
@@ -110,6 +119,8 @@ class RebarDetectorApp {
         this.elements.downloadBtn.addEventListener('click', () => this.downloadResult());
         this.elements.exportPdfBtn.addEventListener('click', () => this.exportPDF());
         this.elements.exportExcelBtn.addEventListener('click', () => this.exportExcel());
+        this.elements.editToggleBtn.addEventListener('click', () => this.toggleEditMode());
+        this.elements.editCanvas.addEventListener('click', (e) => this.handleCanvasClick(e));
         this.elements.switchCameraBtn.addEventListener('click', () => this.switchCamera());
         this.elements.captureBtn.addEventListener('click', () => this.captureFrame());
         this.elements.startDetectionBtn.addEventListener('click', () => this.startLiveDetection());
@@ -481,6 +492,16 @@ class RebarDetectorApp {
         this.resultImageUrl = data.result_image;
         this.elements.resultImage.src = data.result_image;
 
+        // Store detections for edit mode
+        this.detections = data.detections || [];
+        this.excludedIds = new Set();
+        this.imageSize = data.image_size || null;
+        this.editMode = false;
+        this.elements.editToggleBtn.classList.remove('active');
+        this.elements.editHint.classList.add('hidden');
+        this.elements.editCanvas.classList.add('hidden');
+        this.elements.excludedCount.classList.add('hidden');
+
         if (data.detections) this.displayDetectionsTable(data.detections);
 
         this.elements.resultsSection.classList.remove('hidden');
@@ -554,7 +575,9 @@ class RebarDetectorApp {
         const tbody = this.elements.detectionsBody;
         tbody.textContent = '';
         detections.slice(0, 100).forEach(det => {
+            const excluded = this.excludedIds.has(det.id);
             const row = document.createElement('tr');
+            if (excluded) row.className = 'row-excluded';
             [det.id, det.diameter_mm || '-', det.radius_mm || '-', det.area_mm2 || '-',
              det.weight_kg || '-', (det.standard_size || '-') + 'mm',
              '\u20B9' + (det.unit_price || 0), (det.confidence * 100).toFixed(1) + '%'
@@ -571,6 +594,200 @@ class RebarDetectorApp {
             td.colSpan = 8; td.style.textAlign = 'center'; td.style.color = 'var(--text-muted)';
             td.textContent = '... and ' + (detections.length - 100) + ' more';
             row.appendChild(td); tbody.appendChild(row);
+        }
+    }
+
+    // === EDIT MODE (exclude false detections) ===
+    toggleEditMode() {
+        this.editMode = !this.editMode;
+        this.elements.editToggleBtn.classList.toggle('active', this.editMode);
+        this.elements.editHint.classList.toggle('hidden', !this.editMode);
+        this.elements.editCanvas.classList.toggle('hidden', !this.editMode);
+        if (this.editMode) {
+            this.setupEditCanvas();
+            this.drawEditOverlay();
+        }
+    }
+
+    setupEditCanvas() {
+        const img = this.elements.resultImage;
+        const canvas = this.elements.editCanvas;
+        canvas.width = img.clientWidth;
+        canvas.height = img.clientHeight;
+        canvas.style.width = img.clientWidth + 'px';
+        canvas.style.height = img.clientHeight + 'px';
+    }
+
+    drawEditOverlay() {
+        const canvas = this.elements.editCanvas;
+        const ctx = canvas.getContext('2d');
+        const img = this.elements.resultImage;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (!this.detections.length || !this.imageSize) return;
+
+        const scaleX = img.clientWidth / this.imageSize.width;
+        const scaleY = img.clientHeight / this.imageSize.height;
+
+        this.detections.forEach(det => {
+            const cx = det.center[0] * scaleX;
+            const cy = det.center[1] * scaleY;
+            const bw = (det.box[2] - det.box[0]) * scaleX;
+            const bh = (det.box[3] - det.box[1]) * scaleY;
+            const r = Math.min(bw, bh) * 0.35;
+            const excluded = this.excludedIds.has(det.id);
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            if (excluded) {
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
+                ctx.fill();
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                // Draw X
+                ctx.beginPath();
+                ctx.moveTo(cx - r * 0.6, cy - r * 0.6);
+                ctx.lineTo(cx + r * 0.6, cy + r * 0.6);
+                ctx.moveTo(cx + r * 0.6, cy - r * 0.6);
+                ctx.lineTo(cx - r * 0.6, cy + r * 0.6);
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+            } else {
+                ctx.fillStyle = 'rgba(99, 102, 241, 0.15)';
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(99, 102, 241, 0.5)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+        });
+    }
+
+    handleCanvasClick(e) {
+        if (!this.editMode || !this.detections.length || !this.imageSize) return;
+
+        const canvas = this.elements.editCanvas;
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        const img = this.elements.resultImage;
+        const scaleX = img.clientWidth / this.imageSize.width;
+        const scaleY = img.clientHeight / this.imageSize.height;
+
+        // Find closest detection to click
+        let closestDet = null;
+        let closestDist = Infinity;
+        this.detections.forEach(det => {
+            const cx = det.center[0] * scaleX;
+            const cy = det.center[1] * scaleY;
+            const bw = (det.box[2] - det.box[0]) * scaleX;
+            const bh = (det.box[3] - det.box[1]) * scaleY;
+            const r = Math.min(bw, bh) * 0.35;
+            const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+            if (dist < r * 1.5 && dist < closestDist) {
+                closestDist = dist;
+                closestDet = det;
+            }
+        });
+
+        if (!closestDet) return;
+
+        // Toggle exclusion
+        if (this.excludedIds.has(closestDet.id)) {
+            this.excludedIds.delete(closestDet.id);
+        } else {
+            this.excludedIds.add(closestDet.id);
+        }
+
+        this.drawEditOverlay();
+        this.recalcAfterEdit();
+    }
+
+    recalcAfterEdit() {
+        const active = this.detections.filter(d => !this.excludedIds.has(d.id));
+        const count = active.length;
+
+        // Update count
+        this.elements.rebarCount.textContent = count;
+
+        // Update excluded count badge
+        const numExcluded = this.excludedIds.size;
+        this.elements.excludedCount.classList.toggle('hidden', numExcluded === 0);
+        this.elements.excludedCount.textContent = numExcluded + ' removed';
+
+        // Recalculate size distribution
+        const sizeDist = {};
+        active.forEach(d => {
+            const s = d.standard_size || 0;
+            sizeDist[s] = (sizeDist[s] || 0) + 1;
+        });
+
+        if (Object.keys(sizeDist).length > 0) {
+            const sizes = Object.keys(sizeDist).map(Number);
+            const avgDia = active.reduce((sum, d) => sum + (d.diameter_mm || 0), 0) / (count || 1);
+            this.elements.avgDiameter.textContent = avgDia.toFixed(1) + 'mm';
+            this.displaySizeDistribution(sizeDist);
+        }
+
+        // Recalculate cost from active detections
+        const fmt = (n) => '\u20B9' + Math.round(n).toLocaleString('en-IN');
+        const costBySize = {};
+        let totalCost = 0;
+        let totalWeight = 0;
+
+        active.forEach(d => {
+            const size = String(d.standard_size || 0);
+            if (!costBySize[size]) {
+                costBySize[size] = { count: 0, weight_per_rod_kg: d.weight_kg || 0, weight_total_kg: 0, unit_price: d.unit_price || 0, subtotal: 0 };
+            }
+            costBySize[size].count++;
+            costBySize[size].weight_total_kg += d.weight_kg || 0;
+            costBySize[size].subtotal += d.unit_price || 0;
+            totalCost += d.unit_price || 0;
+            totalWeight += d.weight_kg || 0;
+        });
+
+        this.elements.costTotal.textContent = fmt(totalCost);
+        this.elements.totalCostStat.textContent = fmt(totalCost);
+        this.elements.totalWeight.textContent = totalWeight.toFixed(1) + ' kg';
+
+        // Rebuild cost breakdown table
+        const tbody = this.elements.costBreakdownBody;
+        tbody.textContent = '';
+        Object.entries(costBySize).sort((a, b) => parseInt(a[0]) - parseInt(b[0])).forEach(([size, info]) => {
+            const row = document.createElement('tr');
+            [size + 'mm', info.count, info.weight_per_rod_kg + ' kg',
+             info.weight_total_kg.toFixed(2) + ' kg', fmt(info.unit_price), fmt(info.subtotal)
+            ].forEach((text, i) => {
+                const td = document.createElement('td');
+                td.textContent = text;
+                if (i === 5) td.className = 'td-bold';
+                row.appendChild(td);
+            });
+            tbody.appendChild(row);
+        });
+
+        const tfoot = this.elements.costBreakdownFoot;
+        tfoot.textContent = '';
+        const footRow = document.createElement('tr');
+        footRow.className = 'cost-total-row';
+        ['TOTAL', '', '', totalWeight.toFixed(1) + ' kg', '', fmt(totalCost)].forEach((text, i) => {
+            const td = document.createElement('td');
+            td.textContent = text;
+            if (i === 0 || i === 5) td.className = 'td-bold';
+            footRow.appendChild(td);
+        });
+        tfoot.appendChild(footRow);
+
+        // Update detections table with exclusion strikethrough
+        this.displayDetectionsTable(this.detections);
+
+        // Update lastResultData for exports
+        if (this.lastResultData) {
+            this.lastResultData._activeCount = count;
+            this.lastResultData._excludedIds = [...this.excludedIds];
         }
     }
 

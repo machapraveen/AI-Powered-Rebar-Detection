@@ -489,17 +489,6 @@ body {
     transform: translateY(-2px);
 }
 
-.result-image-wrapper {
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    background: var(--bg-tertiary);
-}
-
-.result-image-wrapper img {
-    width: 100%;
-    display: block;
-}
-
 /* Features Section */
 .features-section {
     margin-top: 80px;
@@ -1395,6 +1384,88 @@ body {
 
 .stat-card.cost-card .stat-label {
     color: rgba(255, 255, 255, 0.8);
+}
+
+/* Edit Mode */
+.edit-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.btn-edit-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-edit-toggle:hover {
+    border-color: var(--primary);
+    color: var(--text-primary);
+}
+
+.btn-edit-toggle.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+.excluded-count {
+    display: inline-block;
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.edit-hint {
+    padding: 0 24px 12px;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: -8px;
+}
+
+.edit-hint strong {
+    color: var(--danger);
+}
+
+.result-image-wrapper {
+    position: relative;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--bg-tertiary);
+}
+
+.result-image-wrapper img {
+    width: 100%;
+    display: block;
+}
+
+.result-image-wrapper canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    cursor: crosshair;
+}
+
+.detections-table .row-excluded {
+    opacity: 0.4;
+    text-decoration: line-through;
+}
+
+.detections-table .row-excluded td {
+    color: var(--text-muted);
 }
 
 /* Size Distribution */

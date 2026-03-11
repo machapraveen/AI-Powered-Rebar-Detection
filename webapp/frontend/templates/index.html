@@ -239,8 +239,18 @@
 
                     <!-- Result Image -->
                     <div class="result-image-container">
-                        <div class="result-image-header"><h4><i class="fas fa-check-circle"></i> Detection Visualization</h4></div>
-                        <div class="result-image-wrapper"><img id="resultImage" src="" alt="Detection Result"></div>
+                        <div class="result-image-header">
+                            <h4><i class="fas fa-check-circle"></i> Detection Visualization</h4>
+                            <div class="edit-controls">
+                                <span class="excluded-count hidden" id="excludedCount">0 removed</span>
+                                <button class="btn-edit-toggle" id="editToggleBtn"><i class="fas fa-pencil-alt"></i> Edit</button>
+                            </div>
+                        </div>
+                        <p class="edit-hint hidden" id="editHint">Click on a circle to mark it as <strong>not a rod</strong>. Click again to restore. Stats recalculate automatically.</p>
+                        <div class="result-image-wrapper" id="resultImageWrapper">
+                            <img id="resultImage" src="" alt="Detection Result">
+                            <canvas id="editCanvas" class="hidden"></canvas>
+                        </div>
                     </div>
 
                     <!-- Detailed Table -->
