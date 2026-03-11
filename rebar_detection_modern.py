@@ -38,29 +38,34 @@ if DEVICE.type == 'cuda':
 # STEP 1: Download datasets
 # ============================================================================
 def download_datasets():
-    """Download the rebar count datasets"""
+    """
+    Load the rebar count datasets.
+    Expects dataset in PASCAL VOC format at ./rebar_count_datasets/VOC2007/
+    with JPEGImages/, Annotations/, and ImageSets/ subdirectories.
+
+    If dataset is provided as a zip file, extracts it automatically.
+    """
     if not os.path.exists('./rebar_count_datasets'):
-        print('Downloading datasets...')
-        url = 'https://cnnorth4-modelhub-datasets-obsfs-sfnua.obs.cn-north-4.myhuaweicloud.com/content/c2c1853f-d6a6-4c9d-ac0e-203d4c304c88/NkxX5K/dataset/rebar_count_datasets.zip'
-        try:
-            r = requests.get(url, allow_redirects=True, timeout=300)
-            r.raise_for_status()
-            with open('./rebar_count_datasets.zip', 'wb') as f:
-                f.write(r.content)
-
-            with zipfile.ZipFile('./rebar_count_datasets.zip', 'r') as zip_ref:
-                zip_ref.extractall('./')
-
-            os.remove('./rebar_count_datasets.zip')
-
-            if os.path.exists('./rebar_count_datasets'):
-                print('Dataset download successful!')
-                return True
-            else:
-                print('Dataset extraction failed!')
+        zip_path = './rebar_count_datasets.zip'
+        if os.path.exists(zip_path):
+            print('Extracting dataset from zip...')
+            try:
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall('./')
+                os.remove(zip_path)
+                if os.path.exists('./rebar_count_datasets'):
+                    print('Dataset extraction successful!')
+                    return True
+            except Exception as e:
+                print(f'Dataset extraction failed: {e}')
                 return False
-        except Exception as e:
-            print(f'Dataset download failed: {e}')
+        else:
+            print('ERROR: Dataset not found!')
+            print('Please place the rebar_count_datasets/ folder in the project root.')
+            print('Expected structure:')
+            print('  rebar_count_datasets/VOC2007/JPEGImages/  (training images)')
+            print('  rebar_count_datasets/VOC2007/Annotations/ (XML annotations)')
+            print('  rebar_count_datasets/VOC2007/ImageSets/   (train/val splits)')
             return False
     else:
         print('./rebar_count_datasets already exists')
