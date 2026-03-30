@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rebar Counter AI - Detection, Measurement & Cost Estimation</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="RebarAI">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="bg-animation"><div class="bg-gradient"></div><div class="bg-grid"></div></div>
+
+    <header class="header">
+        <div class="container">
+            <div class="logo">
+                <div class="logo-icon"><i class="fas fa-robot"></i></div>
+                <div class="logo-text">
+                    <h1>Rebar Counter <span class="version">AI</span></h1>
+                    <span>Detect + Measure + Estimate Cost</span>
+                </div>
+            </div>
+            <div class="header-info">
+                <button class="btn-install hidden" id="installBtn" title="Install App">
+                    <i class="fas fa-download"></i>
+                    <span>Install App</span>
+                </button>
+                <div class="device-badge" id="deviceBadge">
+                    <i class="fas fa-microchip"></i>
+                    <span id="gpuNameText">Cloud AI</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="container">
+            <section class="hero">
+                <h2>Count, Measure & Price Rebars Instantly</h2>
+                <p>Upload a rebar image or use live camera. AI detects rebars, estimates diameter, calculates weight & cost. Export as PDF or Excel.</p>
+            </section>
+
+            <section class="mode-selector">
+                <button class="mode-btn active" id="uploadModeBtn" data-mode="upload">
+                    <i class="fas fa-upload"></i><span>Upload Image</span>
+                </button>
+                <button class="mode-btn" id="cameraModeBtn" data-mode="camera">
+                    <i class="fas fa-video"></i><span>Live Camera</span>
+                </button>
+            </section>
+
+            <!-- Pricing Panel -->
+            <section class="pricing-section" id="pricingSection">
+                <div class="pricing-container">
+                    <div class="pricing-header" id="pricingToggle">
+                        <h4><i class="fas fa-indian-rupee-sign"></i> Indian Market Pricing</h4>
+                        <div class="pricing-header-right">
+                            <span class="pricing-badge">Fe500D TMT</span>
+                            <button class="btn-icon" id="pricingExpandBtn"><i class="fas fa-chevron-down"></i></button>
+                        </div>
+                    </div>
+                    <div class="pricing-summary" id="pricingSummary">
+                        <div class="pricing-quick">
+                            <div class="pricing-quick-item">
+                                <span class="pq-label">Rate</span>
+                                <span class="pq-value" id="pqRate">&#8377;65/kg</span>
+                            </div>
+                            <div class="pricing-quick-item">
+                                <span class="pq-label">Length</span>
+                                <span class="pq-value" id="pqLength">12m</span>
+                            </div>
+                            <div class="pricing-quick-item">
+                                <span class="pq-label">Sizes</span>
+                                <span class="pq-value">6-40mm</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pricing-body hidden" id="pricingBody">
+                        <div class="pricing-controls">
+                            <div class="pricing-control-row">
+                                <div class="input-group">
+                                    <label><i class="fas fa-indian-rupee-sign"></i> Price per kg (INR)</label>
+                                    <input type="number" id="pricePerKg" value="65" min="1" max="500" step="0.5">
+                                </div>
+                                <div class="input-group">
+                                    <label><i class="fas fa-ruler-horizontal"></i> Rod Length</label>
+                                    <select id="rodLength">
+                                        <option value="6">6 meters</option>
+                                        <option value="9">9 meters</option>
+                                        <option value="12" selected>12 meters (Standard)</option>
+                                    </select>
+                                </div>
+                                <button class="btn-apply-pricing" id="applyPricingBtn">
+                                    <i class="fas fa-calculator"></i> Recalculate
+                                </button>
+                            </div>
+                        </div>
+                        <div class="pricing-table-wrap">
+                            <table class="pricing-table" id="pricingTable">
+                                <thead>
+                                    <tr>
+                                        <th>Diameter</th>
+                                        <th>Weight/Rod (kg)</th>
+                                        <th>Price/Rod (&#8377;)</th>
+                                        <th>Custom Price</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pricingTableBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="pricing-actions">
+                            <button class="btn-save-pricing" id="savePricingBtn"><i class="fas fa-save"></i> Save</button>
+                            <button class="btn-reset-pricing" id="resetPricingBtn"><i class="fas fa-undo"></i> Reset</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Upload Section -->
+            <section class="upload-section" id="uploadSection">
+                <div class="upload-container">
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+                        <h3>Drop your rebar image here</h3>
+                        <p>or click to browse</p>
+                        <div class="upload-formats"><span>JPG, PNG, WebP (max 50MB)</span></div>
+                        <input type="file" id="fileInput" accept="image/*" hidden>
+                    </div>
+                    <div class="preview-area hidden" id="previewArea">
+                        <div class="preview-header">
+                            <h4><i class="fas fa-image"></i> Selected Image</h4>
+                            <button class="btn-clear" id="clearBtn"><i class="fas fa-times"></i> Clear</button>
+                        </div>
+                        <div class="preview-image-container"><img id="previewImage" src="" alt="Preview"></div>
+                        <div class="preview-info" id="previewInfo"></div>
+                    </div>
+                </div>
+                <button class="btn-analyze" id="analyzeBtn" disabled>
+                    <span class="btn-text"><i class="fas fa-search-plus"></i> Analyze Image</span>
+                    <span class="btn-loading hidden"><i class="fas fa-spinner fa-spin"></i> Processing...</span>
+                </button>
+            </section>
+
+            <!-- Camera Section -->
+            <section class="camera-section hidden" id="cameraSection">
+                <div class="camera-container">
+                    <div class="camera-header">
+                        <h4><i class="fas fa-video"></i> Live Camera Feed</h4>
+                        <div class="camera-controls">
+                            <button class="btn-icon" id="switchCameraBtn" title="Switch Camera"><i class="fas fa-sync-alt"></i></button>
+                            <button class="btn-icon" id="captureBtn" title="Capture Frame"><i class="fas fa-camera"></i></button>
+                        </div>
+                    </div>
+                    <div class="camera-view-container">
+                        <video id="cameraVideo" autoplay playsinline></video>
+                        <canvas id="overlayCanvas"></canvas>
+                        <div class="camera-status" id="cameraStatus"><i class="fas fa-spinner fa-spin"></i> Connecting...</div>
+                    </div>
+                    <div class="live-stats">
+                        <div class="live-stat"><span class="live-stat-label">Count</span><span class="live-stat-value" id="liveCount">0</span></div>
+                        <div class="live-stat"><span class="live-stat-label">Avg Size</span><span class="live-stat-value" id="liveAvgSize">-</span></div>
+                        <div class="live-stat"><span class="live-stat-label">FPS</span><span class="live-stat-value" id="liveFPS">0</span></div>
+                    </div>
+                    <div class="camera-actions">
+                        <button class="btn-start-detection" id="startDetectionBtn"><i class="fas fa-play"></i> Start Detection</button>
+                        <button class="btn-stop-detection hidden" id="stopDetectionBtn"><i class="fas fa-stop"></i> Stop Detection</button>
+                    </div>
+                </div>
+                <div class="calibration-panel">
+                    <h4><i class="fas fa-ruler"></i> Calibration</h4>
+                    <p>Place a rebar of known size in frame for accurate measurements</p>
+                    <div class="calibration-inputs">
+                        <div class="input-group">
+                            <label>Known Diameter (mm)</label>
+                            <input type="number" id="knownDiameter" value="12" min="6" max="40" step="1">
+                        </div>
+                        <button class="btn-calibrate" id="calibrateBtn"><i class="fas fa-crosshairs"></i> Calibrate</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section hidden" id="resultsSection">
+                <div class="results-header">
+                    <h3><i class="fas fa-chart-bar"></i> Detection Results</h3>
+                    <div class="results-actions">
+                        <button class="btn-edit-detections" id="editToggleBtn"><i class="fas fa-pencil-alt"></i> <span id="editBtnLabel">Edit Detections</span></button>
+                        <span class="excluded-badge hidden" id="excludedCount">0 removed</span>
+                        <div class="export-buttons">
+                            <button class="btn-export btn-export-pdf" id="exportPdfBtn"><i class="fas fa-file-pdf"></i> PDF Report</button>
+                            <button class="btn-export btn-export-excel" id="exportExcelBtn"><i class="fas fa-file-excel"></i> Excel</button>
+                            <button class="btn-export btn-export-img" id="downloadBtn"><i class="fas fa-image"></i> Image</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="edit-banner hidden" id="editBanner">
+                    <i class="fas fa-info-circle"></i>
+                    <span>Edit mode active — click on any detected circle in the image below to mark it as <strong>not a rod</strong>. Click again to restore. All stats update automatically.</span>
+                </div>
+
+                <div class="results-grid">
+                    <div class="stats-container">
+                        <div class="stat-card primary">
+                            <div class="stat-icon"><i class="fas fa-bars"></i></div>
+                            <div class="stat-content"><div class="stat-value" id="rebarCount">0</div><div class="stat-label">Rebars Detected</div></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-ruler-combined"></i></div>
+                            <div class="stat-content"><div class="stat-value" id="avgDiameter">-</div><div class="stat-label">Avg Diameter</div></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-weight-hanging"></i></div>
+                            <div class="stat-content"><div class="stat-value" id="totalWeight">-</div><div class="stat-label">Total Weight (kg)</div></div>
+                        </div>
+                        <div class="stat-card cost-card">
+                            <div class="stat-icon"><i class="fas fa-indian-rupee-sign"></i></div>
+                            <div class="stat-content"><div class="stat-value" id="totalCostStat">&#8377;0</div><div class="stat-label">Estimated Cost</div></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-clock"></i></div>
+                            <div class="stat-content"><div class="stat-value" id="inferenceTime">0s</div><div class="stat-label">Processing Time</div></div>
+                        </div>
+                    </div>
+
+                    <!-- Cost Breakdown -->
+                    <div class="cost-estimate-container" id="costEstimateContainer">
+                        <div class="cost-estimate-header">
+                            <h4><i class="fas fa-receipt"></i> Cost Breakdown</h4>
+                            <div class="cost-total" id="costTotal">&#8377;0</div>
+                        </div>
+                        <div class="cost-breakdown-table-wrap">
+                            <table class="cost-breakdown-table">
+                                <thead>
+                                    <tr><th>Size</th><th>Qty</th><th>Wt/Rod</th><th>Total Wt</th><th>Rate/Rod</th><th>Subtotal</th></tr>
+                                </thead>
+                                <tbody id="costBreakdownBody"></tbody>
+                                <tfoot id="costBreakdownFoot"></tfoot>
+                            </table>
+                        </div>
+                        <div class="cost-footer"><span class="cost-note" id="costNote"></span></div>
+                    </div>
+
+                    <!-- Size Distribution -->
+                    <div class="size-distribution-container">
+                        <h4><i class="fas fa-chart-pie"></i> Size Distribution</h4>
+                        <div class="size-distribution" id="sizeDistribution"></div>
+                    </div>
+
+                    <!-- Result Image -->
+                    <div class="result-image-container">
+                        <div class="result-image-header"><h4><i class="fas fa-check-circle"></i> Detection Visualization</h4></div>
+                        <div class="result-image-wrapper" id="resultImageWrapper">
+                            <img id="resultImage" src="" alt="Detection Result">
+                            <canvas id="editCanvas" class="hidden"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Table -->
+                    <div class="detections-table-container">
+                        <h4><i class="fas fa-list"></i> Detailed Measurements</h4>
+                        <div class="table-scroll">
+                            <table class="detections-table" id="detectionsTable">
+                                <thead>
+                                    <tr><th>#</th><th>Dia (mm)</th><th>Radius</th><th>Area (mm²)</th><th>Weight (kg)</th><th>Std Size</th><th>Cost (&#8377;)</th><th>Confidence</th></tr>
+                                </thead>
+                                <tbody id="detectionsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="features-section">
+                <h3>AI-Powered Features</h3>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-ruler"></i></div>
+                        <h4>Size Estimation</h4>
+                        <p>Estimates diameter 6-40mm with IS standard size matching</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-indian-rupee-sign"></i></div>
+                        <h4>Cost Estimation</h4>
+                        <p>Indian market pricing with weight formula D²/162 x L</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-file-export"></i></div>
+                        <h4>Export Reports</h4>
+                        <p>Professional PDF reports and Excel spreadsheets</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon"><i class="fas fa-video"></i></div>
+                        <h4>Live Camera</h4>
+                        <p>Real-time detection via WebSocket stream</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container"><p>Built with <i class="fas fa-heart"></i> using PyTorch & FastAPI</p></div>
+    </footer>
+
+    <div class="toast hidden" id="toast"><div class="toast-icon"></div><div class="toast-message"></div></div>
+    <script src="/static/js/app.js"></script>
+
+    <!-- PWA: Service Worker & Install Prompt -->
+    <script>
+        // Register Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js', { scope: '/' })
+                    .then(reg => console.log('SW registered:', reg.scope))
+                    .catch(err => console.log('SW registration failed:', err));
+            });
+        }
+
+        // PWA Install Prompt
+        let deferredPrompt;
+        const installBtn = document.getElementById('installBtn');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.classList.remove('hidden');
+        });
+
+        installBtn.addEventListener('click', async () => {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log('Install outcome:', outcome);
+            deferredPrompt = null;
+            installBtn.classList.add('hidden');
+        });
+
+        window.addEventListener('appinstalled', () => {
+            installBtn.classList.add('hidden');
+            deferredPrompt = null;
+            console.log('PWA installed');
+        });
+    </script>
+</body>
+</html>
