@@ -1,0 +1,29 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx libglib2.0-0 curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PyTorch CPU + all dependencies
+RUN pip install --no-cache-dir \
+    torch torchvision --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir \
+    "numpy==1.26.4" \
+    fastapi==0.115.6 "uvicorn[standard]==0.34.0" \
+    python-multipart==0.0.19 jinja2==3.1.4 aiofiles==24.1.0 \
+    "pillow>=10.0.0" "opencv-python-headless>=4.8.0" \
+    "pycocotools>=2.0.7" "huggingface_hub>=0.20.0"
+
+# Copy application
+COPY webapp/backend/ ./backend/
+COPY webapp/frontend/ ./frontend/
+
+RUN mkdir -p uploads results model
+
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 10000
+
+CMD ["python", "-m", "uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "10000"]

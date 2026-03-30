@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: rebar-detection-ai
+    runtime: docker
+    dockerfilePath: ./Dockerfile.render
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"

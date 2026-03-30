@@ -41,7 +41,14 @@ import uvicorn
 # Configuration
 # ============================================================================
 BASE_DIR = Path(__file__).resolve().parent.parent
-MODEL_DIR = BASE_DIR.parent / "model"
+# Check multiple model locations (local dev vs Docker/cloud deploy)
+_model_candidates = [BASE_DIR.parent / "model", BASE_DIR / "model", Path("/app/model")]
+MODEL_DIR = next((p for p in _model_candidates if p.exists() and list(p.glob("*.pth"))), BASE_DIR.parent / "model")
+MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
+# HF model repo for cloud download
+HF_MODEL_REPO = "Mpraveen777/rebar-detection-model"
+HF_MODEL_FILE = "model_3.pth"
 UPLOAD_DIR = BASE_DIR / "uploads"
 RESULTS_DIR = BASE_DIR / "results"
 FRONTEND_DIR = BASE_DIR / "frontend"
@@ -122,6 +129,20 @@ class RebarDetector:
             model_files = list(MODEL_DIR.glob("model_*.pth"))
             if model_files:
                 model_path = max(model_files, key=lambda x: int(x.stem.split('_')[1]))
+
+        # Auto-download from HF if no local model found
+        if not model_path or not Path(model_path).exists():
+            try:
+                from huggingface_hub import hf_hub_download
+                print(f"Downloading model from HF: {HF_MODEL_REPO}/{HF_MODEL_FILE}...")
+                model_path = hf_hub_download(
+                    repo_id=HF_MODEL_REPO,
+                    filename=HF_MODEL_FILE,
+                    cache_dir=str(MODEL_DIR)
+                )
+                print(f"Model downloaded to: {model_path}")
+            except Exception as e:
+                print(f"Could not download model: {e}")
 
         if model_path and Path(model_path).exists():
             print(f"Loading weights from: {model_path}")
