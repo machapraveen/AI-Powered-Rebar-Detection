@@ -116,15 +116,8 @@ class RebarDetector:
 
     def _load_model(self, model_path: Optional[str] = None):
         print(f"Loading model on {self.device}...")
-        weights = FasterRCNN_ResNet50_FPN_Weights.DEFAULT
-        self.model = torchvision.models.detection.fasterrcnn_resnet50_fpn(
-            weights=weights, progress=True)
 
-        num_classes = 2
-        in_features = self.model.roi_heads.box_predictor.cls_score.in_features
-        self.model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
-        self.model.roi_heads.detections_per_img = 500
-
+        # Resolve custom weights first so we can skip pretrained download
         if model_path is None:
             model_files = list(MODEL_DIR.glob("model_*.pth"))
             if model_files:
@@ -144,7 +137,19 @@ class RebarDetector:
             except Exception as e:
                 print(f"Could not download model: {e}")
 
-        if model_path and Path(model_path).exists():
+        has_custom_weights = model_path and Path(model_path).exists()
+
+        # Skip 160MB pretrained download when custom weights will overwrite them
+        weights = None if has_custom_weights else FasterRCNN_ResNet50_FPN_Weights.DEFAULT
+        self.model = torchvision.models.detection.fasterrcnn_resnet50_fpn(
+            weights=weights, progress=True)
+
+        num_classes = 2
+        in_features = self.model.roi_heads.box_predictor.cls_score.in_features
+        self.model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+        self.model.roi_heads.detections_per_img = 500
+
+        if has_custom_weights:
             print(f"Loading weights from: {model_path}")
             state_dict = torch.load(model_path, map_location=self.device, weights_only=True)
             self.model.load_state_dict(state_dict)
