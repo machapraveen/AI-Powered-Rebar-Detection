@@ -4,7 +4,7 @@
  */
 
 // API Backend URL - change this when deploying frontend separately
-const API_BASE = 'https://mpraveen777-rebar-counter.hf.space';
+const API_BASE = 'https://rebar-detection-ai.onrender.com';
 
 class RebarDetectorApp {
     constructor() {
